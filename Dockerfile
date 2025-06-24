@@ -10,7 +10,7 @@ COPY conf ./conf
 COPY rag ./rag
 COPY graphrag ./graphrag
 COPY agentic_reasoning ./agentic_reasoning
-
+COPY requirements.txt ./requirements.txt
 
 # 复制前端源代码目录
 COPY web ./web
@@ -18,6 +18,9 @@ COPY web ./web
 # 复制 Docker 相关文件
 COPY docker/service_conf.yaml.template ./conf/service_conf.yaml.template
 COPY docker/entrypoint.sh ./entrypoint.sh
+COPY gunicorn_config.py ./gunicorn_config.py
+
+RUN pip install -r requirements.txt
 
 RUN chmod +x ./entrypoint.sh
 

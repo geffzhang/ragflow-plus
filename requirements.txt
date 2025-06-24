@@ -112,3 +112,5 @@ pyodbc>=5.2.0,<6.0.0
 flasgger>=0.9.7.1,<0.10.0
 xxhash>=3.5.0,<4.0.0
 trio>=0.29.0
+gunicorn>=21.2.0
+waitress>=2.1.2

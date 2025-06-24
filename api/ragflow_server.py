@@ -7,7 +7,6 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 
-from werkzeug.serving import run_simple
 
 from api import settings, utils
 from api.apps import app
@@ -21,10 +20,12 @@ from api.versions import get_ragflow_version
 from rag.settings import print_rag_settings
 from rag.utils.redis_conn import RedisDistributedLock
 
+# 初始化日志
 initRootLogger("ragflow_server")
 
-stop_event = threading.Event()
-
+# 全局停止事件
+stop_event = threading.Event() 
+progress_thread = None
 
 def update_progress():
     redis_lock = RedisDistributedLock("update_progress", timeout=60)
@@ -47,7 +48,10 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-if __name__ == "__main__":
+def init_app(debug=False):
+    """初始化应用，供gunicorn调用"""
+    global progress_thread
+    
     logging.info(r"""
     _____        ___   _____   _____   _       _____   _          __       _____   _       _   _   _____  
     |  _  \      /   | /  ___| |  ___| | |     /  _  \ | |        / /      |  _  \ | |     | | | | /  ___/ 
@@ -62,46 +66,55 @@ if __name__ == "__main__":
     settings.init_settings()
     print_rag_settings()
 
-    # init db
+    # 初始化数据库
     init_web_db()
-    # init llm_factory
+    # 初始化LLM工厂
     init_llm_factory()
 
-    # init runtime config
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--version", default=False, help="RAGFlow version", action="store_true")
-    parser.add_argument("--debug", default=False, help="debug mode", action="store_true")
-    args = parser.parse_args()
-    if args.version:
-        print(get_ragflow_version())
-        sys.exit(0)
-
-    RuntimeConfig.DEBUG = args.debug
+    # 初始化运行时配置
+    RuntimeConfig.DEBUG = debug
     if RuntimeConfig.DEBUG:
         logging.info("run on debug mode")
 
     RuntimeConfig.init_env()
     RuntimeConfig.init_config(JOB_SERVER_HOST=settings.HOST_IP, HTTP_PORT=settings.HOST_PORT)
 
+    # 设置信号处理
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    thread = ThreadPoolExecutor(max_workers=1)
-    thread.submit(update_progress)
+    # 启动进度更新线程
+    thread_pool = ThreadPoolExecutor(max_workers=1)
+    progress_thread = thread_pool.submit(update_progress)
+    
+    logging.info("RAGFlow application initialized successfully")
+    return app
 
-    # start http server
+
+# 为gunicorn提供的应用入口点
+application = init_app()
+
+
+if __name__ == "__main__":
+    # 解析命令行参数
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--version", default=False, help="RAGFlow version", action="store_true")
+    parser.add_argument("--debug", default=False, help="debug mode", action="store_true")
+    args = parser.parse_args()
+    
+    if args.version:
+        print(get_ragflow_version())
+        sys.exit(0)
+    
+    # 初始化应用
+    app = init_app(debug=args.debug)
+    
+    # 启动开发服务器
     try:
-        logging.info("RAGFlow HTTP server start...")
-        run_simple(
-            hostname=settings.HOST_IP,
-            port=settings.HOST_PORT,
-            application=app,
-            threaded=True,
-            use_reloader=RuntimeConfig.DEBUG,
-            use_debugger=RuntimeConfig.DEBUG,
-        )
+        logging.info("RAGFlow HTTP server starting with development server...")
+        app.run(host=settings.HOST_IP, port=settings.HOST_PORT, debug=RuntimeConfig.DEBUG)
     except Exception:
         traceback.print_exc()
         stop_event.set()
