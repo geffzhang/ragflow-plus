@@ -3,8 +3,9 @@ import multiprocessing
 import os
 from api import settings
 
+settings.init_settings()
 # 绑定的IP和端口
-bind = "0.0.0.0:9380"
+bind = f"{settings.HOST_IP}:{settings.HOST_PORT}"
 
 # 工作进程数
 # 建议的工作进程数通常是CPU核心数的2-4倍
